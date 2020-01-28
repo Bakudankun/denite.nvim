@@ -20,3 +20,8 @@ class Kind(Base):
         for target in context["targets"]:
             packname = path.split(target["action__path"])[1]
             self.vim.command("packadd " + packname)
+
+    def action_helptags(self, context: UserContext) -> None:
+        for target in context["targets"]:
+            docdir = path.join(target["action__path"], "doc")
+            self.vim.command("helptags " + docdir)
