@@ -10,7 +10,7 @@ from os import environ, path
 
 
 PACKAGE_HIGHLIGHT_SYNTAX = [
-    {"name": "Head", "link": "Comment", "re": r".*[\/]"},
+    {"name": "Head", "link": "Directory", "re": r".*[\/]"},
 ]
 
 
