@@ -4,7 +4,9 @@
 " License: MIT license
 "=============================================================================
 
-let g:denite#filter#is_cmdline_filter_open = v:false
+function! denite#filter#is_cmdline_filter_open() abort
+  return exists('s:is_cmdline_filter_open') && s:is_cmdline_filter_open
+endfunction
 
 function! denite#filter#_open(context, parent, entire_len, is_async) abort
   let denite_statusline = get(b:, 'denite_statusline', {})
@@ -30,14 +32,19 @@ function! denite#filter#_open(context, parent, entire_len, is_async) abort
     call s:prepare_cmdline()
     call s:start_timer()
     set concealcursor+=c
-    silent! redraw
 
-    let g:denite#filter#is_cmdline_filter_open = v:true
+    if &lazyredraw
+      " Some mappings does not redraw denite window when 'lazyredraw' is on,
+      " so ensure to redraw before entering cmdline.
+      silent! redraw
+    endif
+
+    let s:is_cmdline_filter_open = v:true
     try
       let g:denite#_filter_prev_input = input(a:context['prompt'], a:context['input'])
     catch /^Vim:Interrupt$/
     endtry
-    let g:denite#filter#is_cmdline_filter_open = v:false
+    let s:is_cmdline_filter_open = v:false
 
     set concealcursor-=c
     cmapclear <buffer>
@@ -187,11 +194,11 @@ endfunction
 
 function! s:get_current_input() abort
   " Returns v:false if user is not in filter window or cmdline
-  if &filetype !=# 'denite-filter' && !g:denite#filter#is_cmdline_filter_open
+  if &filetype !=# 'denite-filter' && !s:is_cmdline_filter_open
     return v:false
   endif
 
-  if g:denite#filter#is_cmdline_filter_open
+  if s:is_cmdline_filter_open
     return getcmdline()
   else
     return getline('.')
@@ -209,10 +216,6 @@ function! s:filter_async() abort
 
   call denite#util#rpcrequest('_denite_do_async_map',
         \ [g:denite#_filter_parent, 'filter_async', [input]], v:true)
-
-  if g:denite#filter#is_cmdline_filter_open
-    silent! redraw
-  endif
 endfunction
 
 function! s:update() abort

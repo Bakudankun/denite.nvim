@@ -512,6 +512,8 @@ class Default(object):
 
         self._updated = False
         self._stop_timer('update_buffer')
+        if self._vim.call('denite#filter#is_cmdline_filter_open'):
+            self._vim.command('silent! redraw')
 
     def _update_status(self) -> None:
         inpt = ''
