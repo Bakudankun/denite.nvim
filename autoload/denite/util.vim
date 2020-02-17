@@ -265,8 +265,15 @@ function! denite#util#getreg(reg) abort
   return substitute(getreg(a:reg, 1), '[\xfd\x80]', '', 'g')
 endfunction
 
-function! denite#util#check_floating(context) abort
-  return (a:context['split'] ==# 'floating' ||
+function! denite#util#get_filter_type(context) abort
+  if (a:context['split'] ==# 'floating' ||
         \ a:context['filter_split_direction'] ==# 'floating')
         \ && exists('*nvim_open_win')
+    return 'floating'
+  elseif (a:context['split'] ==# 'cmdline' ||
+        \ a:context['filter_split_direction'] ==# 'cmdline')
+    return 'cmdline'
+  endif
+
+  return 'split'
 endfunction

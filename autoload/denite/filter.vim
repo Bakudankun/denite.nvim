@@ -4,47 +4,73 @@
 " License: MIT license
 "=============================================================================
 
+let g:denite#filter#is_cmdline_filter_open = v:false
+
 function! denite#filter#_open(context, parent, entire_len, is_async) abort
   let denite_statusline = get(b:, 'denite_statusline', {})
 
-  let id = win_findbuf(g:denite#_filter_bufnr)
-  if !empty(id)
-    call win_gotoid(id[0])
-    call cursor(line('$'), 0)
-  else
-    call s:new_filter_buffer(a:context)
+  let filter_type = denite#util#get_filter_type(a:context)
+  if filter_type !=# 'cmdline'
+    let id = win_findbuf(g:denite#_filter_bufnr)
+    if !empty(id) && getbufvar(id, '&filetype') ==# 'denite-filter'
+      call win_gotoid(id[0])
+      call cursor(line('$'), 0)
+    else
+      call s:new_filter_buffer(a:context)
+    endif
   endif
 
   let g:denite#_filter_parent = a:parent
   let g:denite#_filter_context = a:context
   let g:denite#_filter_entire_len = a:entire_len
 
-  call s:init_buffer()
+  if filter_type ==# 'cmdline'
+    let g:denite#_filter_prev_input = a:context['input']
 
-  let b:denite_statusline = denite_statusline
+    call s:prepare_cmdline()
+    call s:start_timer()
+    set concealcursor+=c
+    silent! redraw
 
-  " Set the current input
-  if getline('$') ==# ''
-    call setline('$', a:context['input'])
+    let g:denite#filter#is_cmdline_filter_open = v:true
+    try
+      let g:denite#_filter_prev_input = input(a:context['prompt'], a:context['input'])
+    catch /^Vim:Interrupt$/
+    endtry
+    let g:denite#filter#is_cmdline_filter_open = v:false
+
+    set concealcursor-=c
+    cmapclear <buffer>
+
+    call s:stop_timer()
   else
-    call append('$', a:context['input'])
+    call s:init_buffer()
+
+    let b:denite_statusline = denite_statusline
+
+    " Set the current input
+    if getline('$') ==# ''
+      call setline('$', a:context['input'])
+    else
+      call append('$', a:context['input'])
+    endif
+
+    if a:context['prompt'] !=# '' && strwidth(a:context['prompt']) <= 2
+      call s:init_prompt(a:context)
+    endif
+
+    augroup denite-filter
+      autocmd!
+      autocmd InsertEnter <buffer> call s:start_timer()
+      autocmd InsertLeave <buffer> call s:stop_timer()
+      autocmd InsertLeave <buffer> call s:update()
+    augroup END
+
+    call cursor(line('$'), 0)
+    startinsert!
+
+    let g:denite#_filter_prev_input = getline('.')
   endif
-
-  if a:context['prompt'] !=# '' && strwidth(a:context['prompt']) <= 2
-    call s:init_prompt(a:context)
-  endif
-
-  augroup denite-filter
-    autocmd!
-    autocmd InsertEnter <buffer> call s:start_timer()
-    autocmd InsertLeave <buffer> call s:stop_timer()
-    autocmd InsertLeave <buffer> call s:update()
-  augroup END
-
-  call cursor(line('$'), 0)
-  startinsert!
-
-  let g:denite#_filter_prev_input = getline('.')
 endfunction
 
 function! s:init_buffer() abort
@@ -87,8 +113,19 @@ function! s:init_buffer() abort
   setfiletype denite-filter
 endfunction
 
+function! s:prepare_cmdline() abort
+  cnoremap <buffer><silent><expr> <Plug>(denite_filter_update)
+        \ [<SID>async_update(), '<ESC>'][-1]
+  cnoremap <buffer><silent><expr> <Plug>(denite_filter_quit)
+        \ [<SID>quit(v:true), '<ESC>'][-1]
+  cnoremap <buffer> <Plug>(denite_filter_backspace)
+        \ <BS>
+
+  cmap <buffer> <CR> <Plug>(denite_filter_update)
+endfunction
+
 function! s:new_filter_buffer(context) abort
-  if denite#util#check_floating(a:context)
+  if denite#util#get_filter_type(a:context) ==# 'floating'
     let row = win_screenpos(win_getid())[0] - 1
     " Note: win_screenpos() == [1, 1] if start_filter
     if row <= 0
@@ -148,11 +185,23 @@ function! s:init_prompt(context) abort
   endif
 endfunction
 
-function! s:filter_async() abort
-  let input = getline('.')
+function! s:get_current_input() abort
+  " Returns v:false if user is not in filter window or cmdline
+  if &filetype !=# 'denite-filter' && !g:denite#filter#is_cmdline_filter_open
+    return v:false
+  endif
 
-  if &filetype !=# 'denite-filter'
-        \ || input ==# g:denite#_filter_prev_input
+  if g:denite#filter#is_cmdline_filter_open
+    return getcmdline()
+  else
+    return getline('.')
+  endif
+endfunction
+
+function! s:filter_async() abort
+  let input = s:get_current_input()
+
+  if input is v:false || input ==# g:denite#_filter_prev_input
     return
   endif
 
@@ -160,14 +209,18 @@ function! s:filter_async() abort
 
   call denite#util#rpcrequest('_denite_do_async_map',
         \ [g:denite#_filter_parent, 'filter_async', [input]], v:true)
+
+  if g:denite#filter#is_cmdline_filter_open
+    silent! redraw
+  endif
 endfunction
 
 function! s:update() abort
-  if &filetype !=# 'denite-filter'
+  let input = s:get_current_input()
+
+  if input is v:false
     return
   endif
-
-  let input = getline('.')
 
   call denite#filter#_move_to_parent(v:true)
 
@@ -177,11 +230,11 @@ function! s:update() abort
 endfunction
 
 function! s:async_update() abort
-  if &filetype !=# 'denite-filter'
+  let input = s:get_current_input()
+
+  if input is v:false
     return
   endif
-
-  let input = getline('.')
 
   call s:quit(v:false)
 
@@ -195,13 +248,15 @@ function! s:quit(force_quit) abort
 
   let context = g:denite#_filter_context
 
-  if winnr('$') ==# 1
-    buffer #
-  elseif a:force_quit || !context['start_filter']
-    close!
-  endif
+  if denite#util#get_filter_type(context) !=# 'cmdline'
+    if winnr('$') ==# 1
+      buffer #
+    elseif a:force_quit || !context['start_filter']
+      close!
+    endif
 
-  call denite#filter#_move_to_parent(v:false)
+    call denite#filter#_move_to_parent(v:false)
+  endif
 
   call s:stop_timer()
 
