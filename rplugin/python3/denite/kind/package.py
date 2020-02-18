@@ -14,7 +14,6 @@ class Kind(Base):
         super().__init__(vim)
 
         self.name = "package"
-        self.default_action = "packadd"
 
     def action_packadd(self, context: UserContext) -> None:
         for target in context["targets"]:
