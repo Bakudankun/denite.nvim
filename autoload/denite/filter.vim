@@ -194,11 +194,11 @@ endfunction
 
 function! s:get_current_input() abort
   " Returns v:false if user is not in filter window or cmdline
-  if &filetype !=# 'denite-filter' && !s:is_cmdline_filter_open
+  if &filetype !=# 'denite-filter' && !denite#filter#is_cmdline_filter_open()
     return v:false
   endif
 
-  if s:is_cmdline_filter_open
+  if denite#filter#is_cmdline_filter_open()
     return getcmdline()
   else
     return getline('.')
